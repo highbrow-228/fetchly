@@ -1,0 +1,48 @@
+[project]
+name = "fetchly"
+version = "0.1.0"
+description = "Telegram bot that downloads media from links posted in group chats"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "aiogram>=3.13",
+    "alembic>=1.13",
+    "asyncpg>=0.29",
+    "gallery-dl>=1.27",
+    "prometheus-client>=0.20",
+    "pydantic-settings>=2.4",
+    "redis>=5.0",
+    "sqlalchemy[asyncio]>=2.0.30",
+    "structlog>=24.1",
+    "yt-dlp[default]>=2025.1.1",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.11",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fetchly"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM", "RUF", "ASYNC", "PTH", "RET", "TID", "PL"]
+# RUF001: bot texts are Ukrainian. PLR0913: dependencies are passed explicitly.
+ignore = ["PLR2004", "PLR0913", "RUF001"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src"]
+plugins = ["pydantic.mypy"]

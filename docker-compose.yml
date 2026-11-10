@@ -1,0 +1,132 @@
+name: fetchly
+
+x-app: &app
+  image: fetchly-app
+  build:
+    context: .
+    args:
+      SHARED_DIR: ${SHARED_DIR}
+  env_file: .env
+  restart: unless-stopped
+
+x-app-depends: &app-depends
+  migrate:
+    condition: service_completed_successfully
+  postgres:
+    condition: service_healthy
+  redis:
+    condition: service_healthy
+  bot-api:
+    condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    user: postgres
+    command: ["postgres", "-p", "${POSTGRES_PORT}"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      PGPORT: ${POSTGRES_PORT}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # TCP on purpose: the temporary init server listens on the socket only.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p ${POSTGRES_PORT} -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    user: redis
+    command:
+      - redis-server
+      - --port
+      - "${REDIS_PORT}"
+      - --requirepass
+      - ${REDIS_PASSWORD}
+      - --appendonly
+      - "yes"
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -p ${REDIS_PORT} ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  bot-api:
+    image: fetchly-bot-api
+    build:
+      context: docker/bot-api
+      args:
+        SHARED_DIR: ${SHARED_DIR}
+    command:
+      - --local
+      - --http-port=${BOT_API_PORT}
+      - --dir=/var/lib/telegram-bot-api
+      - --temp-dir=/tmp/telegram-bot-api
+    environment:
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
+    volumes:
+      - bot-api-data:/var/lib/telegram-bot-api
+      - shared-media:${SHARED_DIR}
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 ${BOT_API_PORT}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  migrate:
+    <<: *app
+    command: ["uv", "run", "--no-sync", "alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  gateway:
+    <<: *app
+    command: ["uv", "run", "--no-sync", "python", "-m", "fetchly.gateway"]
+    depends_on: *app-depends
+    ports:
+      - "127.0.0.1:${GATEWAY_METRICS_PORT}:${GATEWAY_METRICS_PORT}"
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python", "-c", "import urllib.request as r; r.urlopen('http://127.0.0.1:${GATEWAY_METRICS_PORT}/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  worker:
+    <<: *app
+    command: ["sh", "docker/worker-entrypoint.sh"]
+    depends_on: *app-depends
+    # Time to finish the jobs in progress after SIGTERM.
+    stop_grace_period: ${WORKER_STOP_GRACE_SECONDS}s
+    ports:
+      # A host port range, so that every replica of a scaled worker gets its own.
+      - "127.0.0.1:${WORKER_METRICS_HOST_PORTS}:${WORKER_METRICS_PORT}"
+    volumes:
+      - shared-media:${SHARED_DIR}
+      - ./cookies:${COOKIES_DIR}:ro
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python", "-c", "import urllib.request as r; r.urlopen('http://127.0.0.1:${WORKER_METRICS_PORT}/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+
+volumes:
+  postgres-data:
+  redis-data:
+  bot-api-data:
+  shared-media:
