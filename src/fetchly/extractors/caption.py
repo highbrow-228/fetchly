@@ -1,5 +1,6 @@
 """Caption under the media: author, date, views, location, TikTok track."""
 
+import re
 from html import escape
 from typing import Any
 
@@ -34,6 +35,7 @@ def from_gallery_dl(platform: Platform, meta: dict[str, Any]) -> dict[str, Any]:
             "location": meta.get("locationCreated"),  # country code of the upload
             "track": music.get("title"),
             "artist": music.get("authorName"),
+            "track_url": _tiktok_music_url(music),
         }
     elif platform is Platform.INSTAGRAM:
         entry |= {
@@ -91,9 +93,20 @@ def _views(count: Any) -> str:
 
 def _track(entry: dict[str, Any]) -> str:
     track, artist = entry.get("track"), entry.get("artist")
-    if track and artist:
-        return escape(f"{track} — {artist}")
-    return _text(track)
+    if not track:
+        return _MISSING
+    label = escape(f"{track} — {artist}" if artist else str(track))
+    if url := entry.get("track_url"):
+        return f'<a href="{escape(str(url))}">{label}</a>'
+    return label
+
+
+def _tiktok_music_url(music: dict[str, Any]) -> str | None:
+    if not music.get("id"):
+        return None
+    # TikTok resolves the page by the trailing id; the slug is only cosmetic.
+    slug = re.sub(r"[^a-z0-9]+", "-", str(music.get("title") or "").lower()).strip("-")
+    return f"https://www.tiktok.com/music/{slug or 'sound'}-{music['id']}"
 
 
 def _text(value: Any) -> str:
