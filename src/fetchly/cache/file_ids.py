@@ -37,7 +37,8 @@ class FileIdCache:
             return _decode(json.loads(hot))
 
         found = await self._media.find_by_url(url)
-        if found is None:
+        # Rows saved before captions existed have none; re-download so one gets built.
+        if found is None or found[1] is None:
             return None
 
         payload = {"items": found[0], "caption": found[1]}
