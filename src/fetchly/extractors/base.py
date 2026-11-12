@@ -30,6 +30,7 @@ class MediaResult:
     extractor: str
     items: list[MediaItem]
     workdir: Path  # owned by the caller once returned; remove after sending
+    caption: str | None = None  # Telegram HTML
 
     @property
     def size_bytes(self) -> int:

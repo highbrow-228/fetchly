@@ -84,7 +84,9 @@ class JobProcessor:
         cached = await self._cache.get(job.url)
         if cached is None:
             return False
-        await self._sender.send(job, [Outgoing.from_cache(item) for item in cached])
+        await self._sender.send(
+            job, [Outgoing.from_cache(item) for item in cached.items], cached.caption
+        )
         return True
 
     async def _download_and_send(self, job: Job) -> Outcome:
@@ -94,7 +96,9 @@ class JobProcessor:
         self._metrics.download_seconds.labels(job.platform.value, media.extractor).observe(elapsed)
         try:
             size = media.size_bytes
-            sent = await self._sender.send(job, [Outgoing.from_file(item) for item in media.items])
+            sent = await self._sender.send(
+                job, [Outgoing.from_file(item) for item in media.items], media.caption
+            )
         finally:
             await self._workspace.discard(media.workdir)
         await self._remember(job, media, sent)
@@ -116,7 +120,7 @@ class JobProcessor:
     async def _remember(self, job: Job, media: MediaResult, sent: list[CachedItem]) -> None:
         # The media is already in the chat: a cache failure must not trigger a resend.
         try:
-            await self._cache.put(job.url, job.platform, media.media_id, sent)
+            await self._cache.put(job.url, job.platform, media.media_id, sent, media.caption)
         except Exception:
             log.exception("cache_write_failed", platform=job.platform.value)
 

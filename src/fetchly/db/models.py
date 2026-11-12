@@ -41,6 +41,7 @@ class MediaCache(Base):
     media_type: Mapped[str] = mapped_column(String(16))
     # [{"kind": "photo" | "video" | "animation", "file_id": "..."}], in album order
     items: Mapped[list[dict[str, str]]] = mapped_column(JSONB)
+    caption: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

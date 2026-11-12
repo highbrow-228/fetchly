@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from itertools import batched
 
 from aiogram import Bot
+from aiogram.enums import ParseMode
 from aiogram.types import (
     InputMediaPhoto,
     InputMediaVideo,
@@ -46,23 +47,36 @@ class MediaSender:
         self._bot = bot
         self._limiter = limiter
 
-    async def send(self, job: Job, items: list[Outgoing]) -> list[CachedItem]:
+    async def send(
+        self, job: Job, items: list[Outgoing], caption: str | None = None
+    ) -> list[CachedItem]:
         sent: list[CachedItem] = []
         for chunk in batched(items, TELEGRAM_ALBUM_SIZE):
             await self._limiter.acquire(job.chat_id, len(chunk))
             if len(chunk) == 1:
-                sent.append(await self._send_single(job, chunk[0]))
+                sent.append(await self._send_single(job, chunk[0], caption))
             else:
-                sent.extend(await self._send_album(job, chunk))
+                sent.extend(await self._send_album(job, chunk, caption))
+            caption = None  # only the first message of a long album carries it
         return sent
 
-    async def _send_single(self, job: Job, item: Outgoing) -> CachedItem:
+    async def _send_single(self, job: Job, item: Outgoing, caption: str | None) -> CachedItem:
         reply = _reply_to(job)
         if item.kind is MediaKind.PHOTO:
-            message = await self._bot.send_photo(job.chat_id, item.media, reply_parameters=reply)
+            message = await self._bot.send_photo(
+                job.chat_id,
+                item.media,
+                caption=caption,
+                parse_mode=ParseMode.HTML,
+                reply_parameters=reply,
+            )
         elif item.kind is MediaKind.ANIMATION:
             message = await self._bot.send_animation(
-                job.chat_id, item.media, reply_parameters=reply
+                job.chat_id,
+                item.media,
+                caption=caption,
+                parse_mode=ParseMode.HTML,
+                reply_parameters=reply,
             )
         else:
             message = await self._bot.send_video(
@@ -72,12 +86,20 @@ class MediaSender:
                 height=item.height,
                 duration=item.duration,
                 supports_streaming=True,
+                caption=caption,
+                parse_mode=ParseMode.HTML,
                 reply_parameters=reply,
             )
         return _sent_item(message)
 
-    async def _send_album(self, job: Job, items: tuple[Outgoing, ...]) -> list[CachedItem]:
+    async def _send_album(
+        self, job: Job, items: tuple[Outgoing, ...], caption: str | None
+    ) -> list[CachedItem]:
         media: list[MediaUnion] = [_input_media(item) for item in items]
+        if caption:  # Telegram shows the first item's caption under the whole album
+            media[0] = media[0].model_copy(
+                update={"caption": caption, "parse_mode": ParseMode.HTML}
+            )
         messages = await self._bot.send_media_group(
             job.chat_id, media, reply_parameters=_reply_to(job)
         )

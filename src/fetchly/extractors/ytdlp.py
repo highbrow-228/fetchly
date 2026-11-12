@@ -15,13 +15,18 @@ from fetchly.extractors.base import (
     NoMediaError,
     PlatformBlockedError,
 )
+from fetchly.extractors.caption import build_caption
 from fetchly.extractors.options import VIDEO_EXTENSIONS, ExtractorOptions, is_blocked
 from fetchly.extractors.process import ProcessOutput, run_process
 from fetchly.extractors.workspace import Workspace
 from fetchly.links import Platform, detect_platform
 
 _META_FILE = "meta.jsonl"
-_META_TEMPLATE = "after_move:%(.{id,playlist_id,duration,width,height,filepath})j"
+_META_TEMPLATE = (
+    "after_move:%(.{id,playlist_id,duration,width,height,filepath,"
+    "uploader,uploader_id,uploader_url,channel,channel_url,"
+    "upload_date,view_count,location,track,artist})j"
+)
 
 
 class YtDlpExtractor:
@@ -99,7 +104,8 @@ class YtDlpExtractor:
         if not items:
             raise NoMediaError(self.name)  # audio-only post, e.g. a photo slideshow
         media_id = str(entries[0].get("playlist_id") or entries[0]["id"])
-        return MediaResult(platform, media_id, self.name, items, workdir)
+        caption = build_caption(platform, entries[0])
+        return MediaResult(platform, media_id, self.name, items, workdir, caption)
 
 
 def _read_meta(path: Path) -> list[dict[str, Any]]:
