@@ -1,5 +1,3 @@
-"""Platform pause with exponential backoff after a block (HTTP 429, login wall)."""
-
 from redis.asyncio import Redis
 
 from fetchly.links import Platform
@@ -16,12 +14,18 @@ class PlatformPauser:
 
     async def block(self, platform: Platform) -> int:
         """Pause the platform; every consecutive block doubles the pause. Returns seconds."""
+        if not await self._redis.set(_pause_key(platform), "1", nx=True, ex=self._base):
+            # Already paused: failures of jobs that were in flight are the same block.
+            return max(await self._redis.ttl(_pause_key(platform)), 0)
+
         level = await self._redis.incr(_level_key(platform))
         seconds: int = min(self._base * 2 ** (level - 1), self._max)
+
         async with self._redis.pipeline(transaction=True) as pipe:
             pipe.set(_pause_key(platform), "1", ex=seconds)
             pipe.expire(_level_key(platform), self._max * 2)
             await pipe.execute()
+
         return seconds
 
     async def succeeded(self, platform: Platform) -> None:

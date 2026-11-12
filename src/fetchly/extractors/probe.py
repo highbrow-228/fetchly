@@ -1,17 +1,15 @@
-"""Video metadata via ffprobe."""
-
 import json
-from dataclasses import dataclass
 from pathlib import Path
+
+from pydantic import BaseModel, Field
 
 from fetchly.extractors.process import run_process
 
 
-@dataclass(frozen=True, slots=True)
-class VideoInfo:
-    width: int | None
-    height: int | None
-    duration: int | None
+class VideoInfo(BaseModel, frozen=True):
+    width: int | None = Field(description="Frame width in pixels; None = unknown")
+    height: int | None = Field(description="Frame height in pixels; None = unknown")
+    duration: int | None = Field(description="Length in seconds; None = unknown")
 
 
 async def probe_video(path: Path, timeout_seconds: float) -> VideoInfo:
@@ -23,11 +21,16 @@ async def probe_video(path: Path, timeout_seconds: float) -> VideoInfo:
         ],
         timeout_seconds,
     )  # fmt: skip
+
     if output.returncode != 0:
-        return VideoInfo(None, None, None)
+        return VideoInfo(width=None, height=None, duration=None)
+
     data = json.loads(output.stdout)
     stream = (data.get("streams") or [{}])[0]
     duration = data.get("format", {}).get("duration")
+
     return VideoInfo(
-        stream.get("width"), stream.get("height"), round(float(duration)) if duration else None
+        width=stream.get("width"),
+        height=stream.get("height"),
+        duration=round(float(duration)) if duration else None,
     )

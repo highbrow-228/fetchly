@@ -1,9 +1,3 @@
-"""Initial schema.
-
-Revision ID: 0001
-Revises:
-"""
-
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
@@ -25,6 +19,7 @@ def upgrade() -> None:
         sa.Column("is_active", sa.Boolean, nullable=False, server_default="true"),
         sa.Column("settings", postgresql.JSONB, nullable=False, server_default="{}"),
     )
+
     op.create_table(
         "media_cache",
         sa.Column("platform", sa.String(16), primary_key=True),
@@ -35,6 +30,7 @@ def upgrade() -> None:
             "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
         ),
     )
+
     op.create_table(
         "link_aliases",
         sa.Column("url", sa.Text, primary_key=True),
@@ -46,7 +42,9 @@ def upgrade() -> None:
             ondelete="CASCADE",
         ),
     )
+
     op.create_index("ix_link_aliases_media", "link_aliases", ["platform", "media_id"])
+
     op.create_table(
         "downloads",
         sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
@@ -64,6 +62,7 @@ def upgrade() -> None:
         sa.Column("from_cache", sa.Boolean, nullable=False),
         postgresql_partition_by="RANGE (created_at)",
     )
+
     op.create_index("ix_downloads_chat", "downloads", ["chat_id", "created_at"])
     # Monthly partitions are created by the worker; this one catches anything else.
     op.execute("CREATE TABLE downloads_default PARTITION OF downloads DEFAULT")

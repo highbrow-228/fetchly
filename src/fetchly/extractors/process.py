@@ -1,19 +1,17 @@
-"""Subprocess runner with a hard timeout."""
-
 import asyncio
 import contextlib
 import os
 import signal
-from dataclasses import dataclass
+
+from pydantic import BaseModel, Field
 
 from fetchly.extractors.base import ExtractionTimeoutError
 
 
-@dataclass(frozen=True, slots=True)
-class ProcessOutput:
-    returncode: int
-    stdout: str
-    stderr: str
+class ProcessOutput(BaseModel, frozen=True):
+    returncode: int = Field(description="Exit code of the process; negative = killed by a signal")
+    stdout: str = Field(description="What the process printed to stdout")
+    stderr: str = Field(description="What the process printed to stderr")
 
     @property
     def text(self) -> str:
@@ -29,6 +27,7 @@ async def run_process(command: list[str], timeout_seconds: float) -> ProcessOutp
         stderr=asyncio.subprocess.PIPE,
         start_new_session=True,  # own group, so children (ffmpeg) die with it
     )
+
     try:
         async with asyncio.timeout(timeout_seconds):
             stdout, stderr = await process.communicate()
@@ -38,7 +37,11 @@ async def run_process(command: list[str], timeout_seconds: float) -> ProcessOutp
         if process.returncode is None:
             with contextlib.suppress(ProcessLookupError):
                 os.killpg(process.pid, signal.SIGKILL)
+
             await process.wait()
+
     return ProcessOutput(
-        process.returncode or 0, stdout.decode(errors="replace"), stderr.decode(errors="replace")
+        returncode=process.returncode or 0,
+        stdout=stdout.decode(errors="replace"),
+        stderr=stderr.decode(errors="replace"),
     )

@@ -222,3 +222,7 @@ __marimo__/
 # Fetchly
 cookies/*
 !cookies/.gitkeep
+
+
+.claude/
+.ocr/

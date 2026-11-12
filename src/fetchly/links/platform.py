@@ -1,5 +1,3 @@
-"""Platform detection by URL host."""
-
 from enum import StrEnum
 from urllib.parse import urlsplit
 
@@ -13,27 +11,37 @@ class Platform(StrEnum):
     FACEBOOK = "facebook"
 
 
-_DOMAINS: dict[str, Platform] = {
+# Exact hosts ("www." aside): other subdomains are redirectors, CDNs or unrelated services.
+_HOSTS: dict[str, Platform] = {
     "tiktok.com": Platform.TIKTOK,
+    "m.tiktok.com": Platform.TIKTOK,
+    "vm.tiktok.com": Platform.TIKTOK,
+    "vt.tiktok.com": Platform.TIKTOK,
     "instagram.com": Platform.INSTAGRAM,
     "instagr.am": Platform.INSTAGRAM,
     "youtube.com": Platform.YOUTUBE,
+    "m.youtube.com": Platform.YOUTUBE,
+    "music.youtube.com": Platform.YOUTUBE,
     "youtu.be": Platform.YOUTUBE,
     "twitter.com": Platform.TWITTER,
+    "mobile.twitter.com": Platform.TWITTER,
     "x.com": Platform.TWITTER,
+    "mobile.x.com": Platform.TWITTER,
     "reddit.com": Platform.REDDIT,
+    "old.reddit.com": Platform.REDDIT,
+    "new.reddit.com": Platform.REDDIT,
     "redd.it": Platform.REDDIT,
+    "v.redd.it": Platform.REDDIT,
+    "i.redd.it": Platform.REDDIT,
     "facebook.com": Platform.FACEBOOK,
+    "m.facebook.com": Platform.FACEBOOK,
+    "web.facebook.com": Platform.FACEBOOK,
     "fb.watch": Platform.FACEBOOK,
 }
 
 
 def platform_for_host(host: str) -> Platform | None:
-    host = host.lower().rstrip(".")
-    for domain, platform in _DOMAINS.items():
-        if host == domain or host.endswith("." + domain):
-            return platform
-    return None
+    return _HOSTS.get(host.lower().rstrip(".").removeprefix("www."))
 
 
 def detect_platform(url: str) -> Platform | None:

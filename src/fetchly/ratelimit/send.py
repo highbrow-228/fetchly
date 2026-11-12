@@ -1,5 +1,3 @@
-"""Outgoing limits shared by all workers: per chat per minute and global per second."""
-
 import asyncio
 import time
 
@@ -27,11 +25,14 @@ class SendLimiter:
             now = time.time()
             slot = int(now) // window
             key = f"{prefix}:{slot}"
+
             async with self._redis.pipeline(transaction=True) as pipe:
                 pipe.incrby(key, cost)
                 pipe.expire(key, window * 2)
                 used, _ = await pipe.execute()
+
             if int(used) <= limit:
                 return
+
             await self._redis.decrby(key, cost)
             await asyncio.sleep((slot + 1) * window - now)

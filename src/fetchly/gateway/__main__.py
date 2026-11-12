@@ -1,14 +1,14 @@
-"""Gateway entry point: wires dependencies and serves the webhook until SIGTERM."""
-
 import asyncio
 import signal
 import socket
 
 from aiohttp import web
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from fetchly.botapi import create_bot
-from fetchly.config import Settings, load_settings
-from fetchly.db import ChatRepository, DownloadRepository, create_engine, create_session_factory
+from fetchly.config import Settings
+from fetchly.db import ChatRepository, DownloadRepository
+from fetchly.gateway.access import ChatAccess
 from fetchly.gateway.app import build_dispatcher, build_webhook_app
 from fetchly.gateway.bootstrap import leave_cloud_api, register_webhook
 from fetchly.gateway.commands import StatsCommand
@@ -23,24 +23,32 @@ from fetchly.telemetry.server import add_telemetry_routes, start_site
 
 async def run(settings: Settings) -> None:
     redis = create_redis(settings)
-    engine = create_engine(settings)
-    sessions = create_session_factory(engine)
+    engine = create_async_engine(settings.postgres_url, pool_pre_ping=True)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
     bot = create_bot(settings)
     metrics = Metrics()
+
     queue = JobQueue(
         redis,
         consumer=socket.gethostname(),
         claim_idle_ms=settings.job_claim_idle_seconds * 1000,
         block_ms=settings.queue_block_seconds * 1000,
     )
+
     intake = LinkIntake(
+        ChatAccess(
+            bot,
+            redis,
+            allowed_chats=settings.allowed_chats,
+            trusted_users=settings.trusted_users,
+        ),
         queue,
         MessageTracker(redis, settings.job_state_ttl_seconds),
         IntakeLimiter(redis, settings.user_rate_per_minute, settings.chat_rate_per_minute),
         metrics,
-        allowed_chats=settings.allowed_chats,
         max_links=settings.max_links_per_message,
     )
+
     dispatcher = build_dispatcher(
         intake,
         StatsCommand(DownloadRepository(sessions), queue),
@@ -57,6 +65,7 @@ async def run(settings: Settings) -> None:
 
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
+
     for signum in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(signum, stop.set)
 
@@ -65,14 +74,17 @@ async def run(settings: Settings) -> None:
         build_webhook_app(dispatcher, bot, settings.webhook_secret), settings.gateway_port
     )
     telemetry_site = await start_site(telemetry, settings.gateway_metrics_port)
+
     try:
         await leave_cloud_api(settings.bot_token, redis)
+
         await register_webhook(
             bot,
             settings.webhook_url,
             settings.webhook_secret,
             dispatcher.resolve_used_update_types(),
         )
+
         await stop.wait()
     finally:
         await webhook_site.cleanup()
@@ -83,7 +95,7 @@ async def run(settings: Settings) -> None:
 
 
 def main() -> None:
-    settings = load_settings()
+    settings = Settings()
     setup_logging(settings.log_level)
     asyncio.run(run(settings))
 

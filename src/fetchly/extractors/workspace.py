@@ -1,5 +1,3 @@
-"""Per-download scratch directories on the volume shared with the Bot API server."""
-
 import asyncio
 import shutil
 import tempfile
@@ -34,15 +32,18 @@ class Workspace:
         self._root.mkdir(parents=True, exist_ok=True)
         workdir = Path(tempfile.mkdtemp(prefix=_PREFIX, dir=self._root))
         workdir.chmod(0o755)  # the Bot API server runs as another user and must read it
+
         return workdir
 
     def _copy_cookies(self, platform: Platform, workdir: Path) -> Path | None:
         source = self._cookies_dir / f"{platform.value}.txt"
         if not source.is_file():
             return None
+
         target = workdir / "cookies.txt"
         shutil.copyfile(source, target)
         target.chmod(0o600)
+
         return target
 
     def _purge(self, older_than: float) -> None:

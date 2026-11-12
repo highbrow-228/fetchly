@@ -4,6 +4,7 @@ from fetchly.extractors.base import (
     MediaItem,
     MediaKind,
     MediaResult,
+    MediaTooLargeError,
     PlatformBlockedError,
     PlatformPausedError,
 )
@@ -17,6 +18,7 @@ __all__ = [
     "MediaItem",
     "MediaKind",
     "MediaResult",
+    "MediaTooLargeError",
     "PlatformBlockedError",
     "PlatformPausedError",
     "Workspace",

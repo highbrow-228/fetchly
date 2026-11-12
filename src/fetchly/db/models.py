@@ -1,5 +1,3 @@
-"""Database schema. No message text or user names are stored anywhere."""
-
 from datetime import datetime
 from typing import Any
 

@@ -1,9 +1,3 @@
-"""Per-message job counter.
-
-A message may carry several links. The final reaction (clear or shrug) is set
-only when the last job of the message has finished.
-"""
-
 from redis.asyncio import Redis
 
 
@@ -14,6 +8,7 @@ class MessageTracker:
 
     async def begin(self, chat_id: int, message_id: int, jobs: int) -> None:
         key = _key(chat_id, message_id)
+
         async with self._redis.pipeline(transaction=True) as pipe:
             pipe.hset(key, mapping={"pending": jobs, "failed": 0})
             pipe.expire(key, self._ttl)
@@ -26,13 +21,17 @@ class MessageTracker:
         True if any job of the message failed.
         """
         key = _key(chat_id, message_id)
+
         async with self._redis.pipeline(transaction=True) as pipe:
             pipe.hincrby(key, "pending", -1)
             pipe.hincrby(key, "failed", int(failed))
             pending, failures = await pipe.execute()
+
         if int(pending) > 0:
             return None
+
         await self._redis.delete(key)
+
         return int(failures) > 0
 
 

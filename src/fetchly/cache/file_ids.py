@@ -1,10 +1,8 @@
-"""file_id cache: Redis in front, Postgres as the source of truth."""
-
 import hashlib
 import json
-from dataclasses import dataclass
 from typing import Any
 
+from pydantic import BaseModel, Field
 from redis.asyncio import Redis
 
 from fetchly.db import MediaRepository
@@ -12,16 +10,18 @@ from fetchly.extractors.base import MediaKind
 from fetchly.links import Platform
 
 
-@dataclass(frozen=True, slots=True)
-class CachedItem:
-    kind: MediaKind
-    file_id: str
+class CachedItem(BaseModel, frozen=True):
+    kind: MediaKind = Field(description="Type of the file: photo, video or animation")
+    file_id: str = Field(
+        description="Telegram's id of a file it already stores; sending by this id needs no upload"
+    )
 
 
-@dataclass(frozen=True, slots=True)
-class CachedMedia:
-    items: list[CachedItem]
-    caption: str | None
+class CachedMedia(BaseModel, frozen=True):
+    items: list[CachedItem] = Field(description="Files of one post, in the order they are sent")
+    caption: str | None = Field(
+        description="Text sent under the media, as Telegram HTML; None = no caption"
+    )
 
 
 class FileIdCache:
@@ -35,11 +35,14 @@ class FileIdCache:
         hot = await self._redis.get(key)
         if hot is not None:
             return _decode(json.loads(hot))
+
         found = await self._media.find_by_url(url)
         if found is None:
             return None
+
         payload = {"items": found[0], "caption": found[1]}
         await self._redis.set(key, json.dumps(payload), ex=self._ttl)
+
         return _decode(payload)
 
     async def put(
@@ -56,6 +59,11 @@ class FileIdCache:
         payload = {"items": rows, "caption": caption}
         await self._redis.set(_key(url), json.dumps(payload), ex=self._ttl)
 
+    async def forget(self, url: str) -> None:
+        """Drop the media behind this link: Telegram no longer accepts its file_ids."""
+        await self._media.forget(url)
+        await self._redis.delete(_key(url))
+
 
 def _key(url: str) -> str:
     # v2: the payload carries the caption next to the items.
@@ -63,5 +71,7 @@ def _key(url: str) -> str:
 
 
 def _decode(payload: dict[str, Any]) -> CachedMedia:
-    items = [CachedItem(MediaKind(row["kind"]), row["file_id"]) for row in payload["items"]]
-    return CachedMedia(items, payload["caption"])
+    items = [
+        CachedItem(kind=MediaKind(row["kind"]), file_id=row["file_id"]) for row in payload["items"]
+    ]
+    return CachedMedia(items=items, caption=payload["caption"])

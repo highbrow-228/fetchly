@@ -1,5 +1,3 @@
-"""Redis client factory."""
-
 from redis.asyncio import Redis
 
 from fetchly.config import Settings

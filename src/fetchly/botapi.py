@@ -1,5 +1,3 @@
-"""Bot client bound to the local Bot API server."""
-
 import asyncio
 
 from aiogram import Bot
@@ -33,6 +31,7 @@ class RetryAfterMiddleware(BaseRequestMiddleware):
                 return await make_request(bot, method)
             except TelegramRetryAfter as error:
                 await asyncio.sleep(error.retry_after)
+
         return await make_request(bot, method)
 
 
@@ -41,5 +40,7 @@ def create_bot(settings: Settings) -> Bot:
         api=TelegramAPIServer.from_base(settings.bot_api_url, is_local=True),
         timeout=settings.telegram_request_timeout_seconds,
     )
+
     session.middleware(RetryAfterMiddleware(settings.telegram_retry_attempts))
+
     return Bot(settings.bot_token, session=session)

@@ -1,5 +1,3 @@
-"""Periodic housekeeping: download partitions and orphaned scratch directories."""
-
 import asyncio
 import contextlib
 
@@ -32,5 +30,6 @@ class Maintenance:
                 await self._workspace.purge_stale(self._stale)
             except Exception:
                 log.exception("maintenance_failed")
+
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(stop.wait(), self._interval)

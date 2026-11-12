@@ -1,5 +1,3 @@
-"""First-start setup: leave the cloud Bot API and point the webhook at the gateway."""
-
 import structlog
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError, TelegramNetworkError
@@ -14,7 +12,9 @@ async def leave_cloud_api(token: str, redis: Redis) -> None:
     """Call logOut on the cloud Bot API once; later starts skip it."""
     if not await redis.set(_LOGOUT_MARKER, "1", nx=True):
         return
+
     cloud = Bot(token)
+
     try:
         await cloud.log_out()
         log.info("cloud_api_logged_out")

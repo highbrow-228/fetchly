@@ -1,9 +1,8 @@
-"""Extractor contract: what every download backend provides."""
-
-from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from typing import ClassVar, Protocol
+
+from pydantic import BaseModel, Field
 
 from fetchly.links import Platform
 
@@ -14,23 +13,29 @@ class MediaKind(StrEnum):
     ANIMATION = "animation"
 
 
-@dataclass(frozen=True, slots=True)
-class MediaItem:
-    kind: MediaKind
-    path: Path
-    width: int | None = None
-    height: int | None = None
-    duration: int | None = None
+class MediaItem(BaseModel, frozen=True):
+    kind: MediaKind = Field(description="Type of the file: photo, video or animation")
+    path: Path = Field(description="Where the downloaded file is on disk")
+    width: int | None = Field(default=None, description="Width in pixels; None = unknown")
+    height: int | None = Field(default=None, description="Height in pixels; None = unknown")
+    duration: int | None = Field(
+        default=None, description="Video length in seconds; None = unknown"
+    )
 
 
-@dataclass(frozen=True, slots=True)
-class MediaResult:
-    platform: Platform
-    media_id: str
-    extractor: str
-    items: list[MediaItem]
-    workdir: Path  # owned by the caller once returned; remove after sending
-    caption: str | None = None  # Telegram HTML
+class MediaResult(BaseModel, frozen=True):
+    platform: Platform = Field(description="Platform the media came from")
+    media_id: str = Field(description="Id of the post, unique within the platform")
+    extractor: str = Field(description="Tool that downloaded the media: yt-dlp or gallery-dl")
+    items: list[MediaItem] = Field(
+        description="Downloaded files, in the order they appear in the post"
+    )
+    workdir: Path = Field(
+        description="Temporary directory with the files; whoever gets this result must delete it"
+    )
+    caption: str | None = Field(
+        default=None, description="Text sent under the media, as Telegram HTML; None = no caption"
+    )
 
     @property
     def size_bytes(self) -> int:
@@ -71,8 +76,21 @@ class MediaTooLongError(ExtractionError):
     retryable = False
 
 
+class ExtractionFailedError(ExtractionError):
+    """The tool gave up on this link (deleted post, unsupported page); retrying is pointless."""
+
+    retryable = False
+
+
+class LoginRequiredError(ExtractionError):
+    """This post is only visible to a logged-in account (private, age-gated)."""
+
+    result = "login_required"
+    retryable = False
+
+
 class PlatformBlockedError(ExtractionError):
-    """The platform answered with HTTP 429 or demanded a login."""
+    """The platform is throttling us (HTTP 429, bot check)."""
 
     result = "blocked"
     retryable = False

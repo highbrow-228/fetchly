@@ -1,6 +1,4 @@
-"""Persistent file_id cache: media rows plus the links that point at them."""
-
-from sqlalchemy import select
+from sqlalchemy import delete, select, tuple_
 from sqlalchemy.dialects.postgresql import insert
 
 from fetchly.db.engine import SessionFactory
@@ -21,9 +19,21 @@ class MediaRepository:
             )
             .where(LinkAlias.url == url)
         )
+
         async with self._sessions() as session:
             row = (await session.execute(statement)).one_or_none()
+
         return (row.items, row.caption) if row else None
+
+    async def forget(self, url: str) -> None:
+        """Delete the media this link points at; its aliases go with it (cascade)."""
+        alias = select(LinkAlias.platform, LinkAlias.media_id).where(LinkAlias.url == url)
+        statement = delete(MediaCache).where(
+            tuple_(MediaCache.platform, MediaCache.media_id).in_(alias)
+        )
+
+        async with self._sessions.begin() as session:
+            await session.execute(statement)
 
     async def save(
         self,
@@ -42,14 +52,17 @@ class MediaRepository:
             items=items,
             caption=caption,
         )
+
         media = media.on_conflict_do_update(
             index_elements=[MediaCache.platform, MediaCache.media_id],
             set_={"media_type": media_type, "items": items, "caption": caption},
         )
+
         alias = insert(LinkAlias).values(url=url, platform=platform, media_id=media_id)
         alias = alias.on_conflict_do_update(
             index_elements=[LinkAlias.url], set_={"platform": platform, "media_id": media_id}
         )
+
         async with self._sessions.begin() as session:
             await session.execute(media)
             await session.execute(alias)

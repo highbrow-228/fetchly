@@ -74,7 +74,8 @@ webhook на локальному сервері. Після `logOut` Telegram �
 | Telegram | `BOT_TOKEN`, `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` | токен бота і дані застосунку для локального Bot API |
 | | `WEBHOOK_SECRET` | секрет, яким підписані webhook-запити |
 | | `OWNER_ID` | id користувача, якому доступна `/stats` |
-| | `ALLOWED_CHATS` | id чатів через кому; порожньо = всі чати |
+| | `TRUSTED_USER_IDS` | id інших акаунтів власника через кому |
+| | `ALLOWED_CHATS` | id чатів через кому; `*` = всі чати; порожньо = лише чати, де є `OWNER_ID` або хтось із `TRUSTED_USER_IDS` |
 | | `TELEGRAM_REQUEST_TIMEOUT_SECONDS`, `TELEGRAM_RETRY_ATTEMPTS` | таймаут запиту і кількість спроб після 429 |
 | Мережа | `GATEWAY_HOST`, `BOT_API_HOST`, `POSTGRES_HOST`, `REDIS_HOST` | імена сервісів у мережі compose |
 | | `GATEWAY_PORT`, `BOT_API_PORT`, `POSTGRES_PORT`, `REDIS_PORT` | внутрішні порти (нестандартні) |

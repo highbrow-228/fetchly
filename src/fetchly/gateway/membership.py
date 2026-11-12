@@ -1,5 +1,3 @@
-"""Tracks which chats the bot is a member of."""
-
 import structlog
 from aiogram.types import ChatMemberUpdated
 

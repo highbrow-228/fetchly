@@ -1,5 +1,3 @@
-"""Final bookkeeping for a job: reaction, metrics, log line, download record."""
-
 import contextlib
 
 import structlog
@@ -44,15 +42,19 @@ class Reporter:
         any_failed = await self._tracker.finish(job.chat_id, job.message_id, failed=failed)
         if any_failed is None:
             return  # other links of the same message are still in progress
+
         reaction: list[ReactionTypeUnion] = []
+
         if any_failed:
             reaction.append(ReactionTypeEmoji(emoji=FAILURE_REACTION))
+
         with contextlib.suppress(TelegramAPIError):
             await self._bot.set_message_reaction(job.chat_id, job.message_id, reaction=reaction)
 
     async def _persist(self, job: Job, outcome: Outcome) -> None:
         try:
             await self._chats.ensure(job.chat_id, job.chat_type)
+
             await self._downloads.record(
                 chat_id=job.chat_id,
                 platform=job.platform.value,

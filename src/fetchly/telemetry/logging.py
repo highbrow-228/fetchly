@@ -1,5 +1,3 @@
-"""JSON logging to stdout for both structlog and stdlib loggers."""
-
 import logging
 import sys
 
@@ -14,13 +12,16 @@ def setup_logging(level: str) -> None:
         structlog.processors.TimeStamper(fmt="iso", utc=True),
         structlog.processors.format_exc_info,
     ]
+
     structlog.configure(
         processors=[*shared, structlog.stdlib.ProcessorFormatter.wrap_for_formatter],
         logger_factory=structlog.stdlib.LoggerFactory(),
         wrapper_class=structlog.stdlib.BoundLogger,
         cache_logger_on_first_use=True,
     )
+
     handler = logging.StreamHandler(sys.stdout)
+
     handler.setFormatter(
         structlog.stdlib.ProcessorFormatter(
             foreign_pre_chain=shared,
@@ -30,6 +31,7 @@ def setup_logging(level: str) -> None:
             ],
         )
     )
+
     root = logging.getLogger()
     root.handlers = [handler]
     root.setLevel(level.upper())

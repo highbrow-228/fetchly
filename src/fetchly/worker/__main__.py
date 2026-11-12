@@ -1,21 +1,14 @@
-"""Worker entry point: wires dependencies and runs consumers until SIGTERM."""
-
 import asyncio
 import signal
 import socket
 
 from aiohttp import web
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from fetchly.botapi import create_bot
 from fetchly.cache import FileIdCache
-from fetchly.config import Settings, load_settings
-from fetchly.db import (
-    ChatRepository,
-    DownloadRepository,
-    MediaRepository,
-    create_engine,
-    create_session_factory,
-)
+from fetchly.config import Settings
+from fetchly.db import ChatRepository, DownloadRepository, MediaRepository
 from fetchly.extractors import Workspace, build_registry
 from fetchly.queue import JobQueue, MessageTracker
 from fetchly.ratelimit import PlatformPauser, SendLimiter
@@ -31,18 +24,20 @@ from fetchly.worker.sender import MediaSender
 
 async def run(settings: Settings) -> None:
     redis = create_redis(settings)
-    engine = create_engine(settings)
-    sessions = create_session_factory(engine)
+    engine = create_async_engine(settings.postgres_url, pool_pre_ping=True)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
     bot = create_bot(settings)
     metrics = Metrics()
     downloads = DownloadRepository(sessions)
     workspace = Workspace(settings.shared_dir, settings.cookies_dir)
+
     queue = JobQueue(
         redis,
         consumer=socket.gethostname(),
         claim_idle_ms=settings.job_claim_idle_seconds * 1000,
         block_ms=settings.queue_block_seconds * 1000,
     )
+
     processor = JobProcessor(
         redis=redis,
         cache=FileIdCache(redis, MediaRepository(sessions), settings.cache_ttl_seconds),
@@ -56,9 +51,11 @@ async def run(settings: Settings) -> None:
             ),
         ),
         metrics=metrics,
+        max_bytes=settings.max_file_size_bytes,
         lock_ttl_seconds=settings.url_lock_ttl_seconds,
         lock_wait_seconds=settings.url_lock_wait_seconds,
     )
+
     reporter = Reporter(
         bot,
         MessageTracker(redis, settings.job_state_ttl_seconds),
@@ -66,6 +63,7 @@ async def run(settings: Settings) -> None:
         downloads,
         metrics,
     )
+
     consumer = Consumer(
         queue,
         processor,
@@ -74,6 +72,7 @@ async def run(settings: Settings) -> None:
         heartbeat_seconds=settings.job_heartbeat_seconds,
         idle_seconds=settings.queue_block_seconds,
     )
+
     maintenance = Maintenance(
         downloads,
         workspace,
@@ -90,14 +89,17 @@ async def run(settings: Settings) -> None:
 
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
+
     for signum in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(signum, stop.set)
 
     await queue.ensure_group()
     site = await start_site(telemetry, settings.worker_metrics_port)
+
     try:
         async with asyncio.TaskGroup() as tasks:
             tasks.create_task(maintenance.run(stop))
+
             for _ in range(settings.worker_concurrency):
                 tasks.create_task(consumer.run(stop))
     finally:
@@ -108,7 +110,7 @@ async def run(settings: Settings) -> None:
 
 
 def main() -> None:
-    settings = load_settings()
+    settings = Settings()
     setup_logging(settings.log_level)
     asyncio.run(run(settings))
 

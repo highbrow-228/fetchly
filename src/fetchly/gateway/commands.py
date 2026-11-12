@@ -1,5 +1,3 @@
-"""Bot commands: /start, /help and the owner-only /stats."""
-
 from datetime import UTC, datetime, timedelta
 
 from aiogram.types import Message
@@ -27,8 +25,10 @@ class StatsCommand:
     async def __call__(self, message: Message) -> None:
         stats = await self._downloads.stats_since(datetime.now(UTC) - STATS_WINDOW)
         lines = ["Статистика за 24 години:", *(_format(row) for row in stats)]
+
         if not stats:
             lines.append("завантажень не було")
+
         lines.append(f"Черга: {await self._queue.length()}")
         lines.append(f"Мертві задачі: {await self._queue.dead_length()}")
         await message.answer("\n".join(lines))
@@ -37,4 +37,5 @@ class StatsCommand:
 def _format(row: PlatformStats) -> str:
     success = round(100 * row.succeeded / row.total)
     cached = round(100 * row.from_cache / row.total)
+
     return f"{row.platform}: {row.total}, успішних {success}%, з кешу {cached}%"

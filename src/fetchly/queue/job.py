@@ -1,23 +1,25 @@
-"""Download job: one link from one message."""
+from typing import Any
 
-from dataclasses import dataclass, replace
+from pydantic import BaseModel, Field
 
 from fetchly.links import Platform
 
 
-@dataclass(frozen=True, slots=True)
-class Job:
-    chat_id: int
-    chat_type: str
-    message_id: int
-    platform: Platform
-    url: str
-    attempt: int = 1
+class Job(BaseModel, frozen=True):
+    chat_id: int = Field(description="Chat the link was posted in")
+    chat_type: str = Field(description="Telegram chat type: private, group, supergroup or channel")
+    message_id: int = Field(description="Message with the link; the bot replies to it")
+    platform: Platform = Field(description="Platform the link belongs to")
+    url: str = Field(description="Link to download, in canonical form")
+    attempt: int = Field(
+        default=1,
+        description="Which try this is: 1 for a new job, +1 each time a failed job is queued again",
+    )
 
     def next_attempt(self) -> "Job":
-        return replace(self, attempt=self.attempt + 1)
+        return self.model_copy(update={"attempt": self.attempt + 1})
 
-    def to_fields(self) -> dict[str, str]:
+    def to_fields(self) -> dict[Any, Any]:  # the key type redis-py's xadd expects
         return {
             "chat_id": str(self.chat_id),
             "chat_type": self.chat_type,
