@@ -1,8 +1,10 @@
 """gallery-dl backend: photos, carousels, slideshows."""
 
 import hashlib
+import json
 import sys
 from pathlib import Path
+from typing import Any
 
 from fetchly.extractors.base import (
     ExtractionError,
@@ -13,6 +15,7 @@ from fetchly.extractors.base import (
     NoMediaError,
     PlatformBlockedError,
 )
+from fetchly.extractors.caption import build_caption, from_gallery_dl
 from fetchly.extractors.options import (
     PHOTO_EXTENSIONS,
     VIDEO_EXTENSIONS,
@@ -46,12 +49,14 @@ class GalleryDlExtractor:
         try:
             command = await self._command(url, platform, workdir)
             output = await run_process(command, self._options.timeout_seconds)
-            items = [item for path in _downloaded(output) if (item := await self._item(path))]
+            paths = _downloaded(output)
+            items = [item for path in paths if (item := await self._item(path))]
             if not items:
                 self._fail(output)
+            caption = build_caption(platform, from_gallery_dl(platform, _metadata(paths[0])))
             # gallery-dl has no uniform media id; the link itself identifies the post.
             media_id = hashlib.sha256(url.encode()).hexdigest()[:32]
-            return MediaResult(platform, media_id, self.name, items, workdir)
+            return MediaResult(platform, media_id, self.name, items, workdir, caption)
         except BaseException:
             await self._workspace.discard(workdir)
             raise
@@ -64,6 +69,7 @@ class GalleryDlExtractor:
             "--directory", str(workdir),
             "--range", f"1-{options.max_items}",
             "--filesize-max", str(options.max_bytes),
+            "--write-metadata",
         ]  # fmt: skip
         if proxy := options.proxies.get(platform):
             command += ["--proxy", proxy]
@@ -94,3 +100,12 @@ def _downloaded(output: ProcessOutput) -> list[Path]:
     """gallery-dl prints one file path per line, in post order."""
     paths = (Path(line.removeprefix("# ").strip()) for line in output.stdout.splitlines())
     return [path for path in paths if path.is_absolute() and path.is_file()]
+
+
+def _metadata(path: Path) -> dict[str, Any]:
+    """--write-metadata puts `<file>.json` next to every downloaded file."""
+    sidecar = path.with_name(path.name + ".json")
+    if not sidecar.is_file():
+        return {}
+    data = json.loads(sidecar.read_text())
+    return data if isinstance(data, dict) else {}

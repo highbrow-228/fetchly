@@ -21,16 +21,57 @@ def build_caption(platform: Platform, entry: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def from_gallery_dl(platform: Platform, meta: dict[str, Any]) -> dict[str, Any]:
+    """Maps gallery-dl post metadata onto the yt-dlp field names used above."""
+    entry: dict[str, Any] = {"upload_date": str(meta.get("date") or "")[:10].replace("-", "")}
+    if platform is Platform.TIKTOK:
+        author, music = _dict(meta.get("author")), _dict(meta.get("music"))
+        handle = author.get("uniqueId") or meta.get("user")
+        entry |= {
+            "uploader": author.get("nickname") or handle,
+            "uploader_url": f"https://www.tiktok.com/@{handle}" if handle else None,
+            "view_count": _dict(meta.get("stats")).get("playCount"),
+            "location": meta.get("locationCreated"),  # country code of the upload
+            "track": music.get("title"),
+            "artist": music.get("authorName"),
+        }
+    elif platform is Platform.INSTAGRAM:
+        entry |= {
+            "uploader": meta.get("fullname") or meta.get("username"),
+            "channel": meta.get("username"),
+            "location": meta.get("location_name"),
+        }
+    elif platform is Platform.TWITTER:
+        author = _dict(meta.get("author"))
+        handle = author.get("name")
+        entry |= {
+            "uploader": author.get("nick") or handle,
+            "uploader_url": f"https://x.com/{handle}" if handle else None,
+            "view_count": meta.get("view_count") or None,  # 0 means "not reported"
+        }
+    elif platform is Platform.REDDIT:
+        entry |= {"uploader": meta.get("author")}
+    elif platform is Platform.FACEBOOK:
+        entry |= {"uploader": meta.get("username"), "uploader_id": meta.get("user_id")}
+    return entry
+
+
+def _dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
 def _author(platform: Platform, entry: dict[str, Any]) -> str:
     name = entry.get("uploader") or entry.get("channel") or entry.get("uploader_id")
     if not name:
         return _MISSING
     url = entry.get("uploader_url") or entry.get("channel_url")
-    # These two extractors return no profile link; the handle is enough to build one.
+    # These extractors return no profile link; the handle or id is enough to build one.
     if not url and platform is Platform.INSTAGRAM and entry.get("channel"):
         url = f"https://www.instagram.com/{entry['channel']}/"
     if not url and platform is Platform.REDDIT and entry.get("uploader"):
         url = f"https://www.reddit.com/user/{entry['uploader']}/"
+    if not url and platform is Platform.FACEBOOK and entry.get("uploader_id"):
+        url = f"https://www.facebook.com/{entry['uploader_id']}"
     if not url:
         return escape(str(name))
     return f'<a href="{escape(str(url))}">{escape(str(name))}</a>'
