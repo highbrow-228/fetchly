@@ -1,7 +1,7 @@
 # Application image for gateway, worker and migrate. Builds on amd64 and arm64.
 FROM python:3.12-slim-bookworm
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=astral/uv:latest /uv /usr/local/bin/uv
 COPY --from=denoland/deno:bin /deno /usr/local/bin/deno
 
 RUN apt-get update \
