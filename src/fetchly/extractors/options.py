@@ -30,6 +30,7 @@ LOGIN_MARKERS = (
     "login_required",
     "sign in to confirm",
     "requires authentication",
+    "redirect to login page",
     "authenticationerror",
     "authorizationerror",
     "authrequired",
@@ -43,6 +44,8 @@ TRANSIENT_MARKERS = (
     "http error 5",
 )
 _URL = re.compile(r"\S*://\S*")
+# Longest error text kept for the log, in characters.
+_DETAIL_LIMIT = 300
 
 
 class ExtractorOptions(BaseModel, frozen=True):
@@ -66,27 +69,37 @@ class ExtractorOptions(BaseModel, frozen=True):
 
 def failure(tool: str, returncode: int, tool_output: str) -> ExtractionError:
     """Why a tool run produced no media, judged by its exit status and lowercased output."""
-    if _has_marker(tool_output, BLOCK_MARKERS):
-        return PlatformBlockedError(tool)
+    errors = _error_lines(tool_output)
+    detail = errors[-1][:_DETAIL_LIMIT] if errors else None
+    error_type = _failure_type(returncode, "\n".join(errors))
 
-    if _has_marker(tool_output, LOGIN_MARKERS):
-        return LoginRequiredError(tool)
+    return error_type(tool, returncode, detail)
+
+
+def _failure_type(returncode: int, errors: str) -> type[ExtractionError]:
+    if _has_marker(errors, BLOCK_MARKERS):
+        return PlatformBlockedError
+
+    if _has_marker(errors, LOGIN_MARKERS):
+        return LoginRequiredError
 
     if returncode == 0:
-        return NoMediaError(tool)
+        return NoMediaError
 
-    if returncode < 0 or _has_marker(tool_output, TRANSIENT_MARKERS):  # killed, or network
-        return ExtractionError(f"{tool} exit {returncode}")
+    if returncode < 0 or _has_marker(errors, TRANSIENT_MARKERS):  # killed, or network
+        return ExtractionError
 
-    return ExtractionFailedError(f"{tool} exit {returncode}")
+    return ExtractionFailedError
 
 
-def _has_marker(tool_output: str, markers: tuple[str, ...]) -> bool:
-    """Look only at error lines, minus URLs: info lines and link slugs prove nothing."""
-    errors = "\n".join(
-        _URL.sub("", line)
+def _error_lines(tool_output: str) -> list[str]:
+    """Only error lines, minus URLs: info lines and link slugs prove nothing."""
+    return [
+        _URL.sub("", line).strip()
         for line in tool_output.splitlines()
         if "error:" in line or "[error]" in line
-    )
+    ]
 
+
+def _has_marker(errors: str, markers: tuple[str, ...]) -> bool:
     return any(marker in errors for marker in markers)

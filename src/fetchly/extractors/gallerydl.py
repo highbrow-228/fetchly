@@ -121,7 +121,7 @@ class GalleryDlExtractor:
 
         error = failure(self.name, output.returncode, output.text)
         if type(error) is ExtractionFailedError and output.returncode & _EXIT_AUTH:
-            return LoginRequiredError(self.name)
+            return LoginRequiredError(self.name, error.returncode, error.detail)
 
         return error
 

@@ -82,6 +82,22 @@ class Consumer:
         try:
             return await self._processor.process(job), False
         except ExtractionError as error:
+            log.warning(
+                "extraction_failed",
+                chat_id=job.chat_id,
+                platform=job.platform.value,
+                result=error.result,
+                attempts=[
+                    {
+                        "tool": attempt.tool,
+                        "result": attempt.result,
+                        "exit_code": attempt.returncode,
+                        "error": attempt.detail,
+                    }
+                    for attempt in error.attempts or [error]
+                ],
+            )
+
             return Outcome(result=error.result), error.retryable
         except Exception as error:
             # Only the error type: messages may contain the link.

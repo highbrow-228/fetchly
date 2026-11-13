@@ -56,6 +56,15 @@ class ExtractionError(Exception):
     result: ClassVar[str] = "failed"
     retryable: ClassVar[bool] = True
 
+    def __init__(self, tool: str, returncode: int | None = None, detail: str | None = None) -> None:
+        super().__init__(tool)
+        self.tool = tool
+        self.returncode = returncode
+        # The tool's last error line, without URLs.
+        self.detail = detail
+        # Errors of every tool tried for the link, this one included; filled by the registry.
+        self.attempts: list[ExtractionError] = []
+
 
 class ExtractionTimeoutError(ExtractionError):
     result = "timeout"

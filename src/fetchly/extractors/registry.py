@@ -18,6 +18,15 @@ from fetchly.extractors.workspace import Workspace
 from fetchly.extractors.ytdlp import YtDlpExtractor
 from fetchly.links import Platform
 
+# After these no other backend is tried: it would hit the same size or length limit,
+# hammer a throttling platform or spend a second timeout.
+_FINAL_ERRORS = (
+    MediaTooLargeError,
+    MediaTooLongError,
+    PlatformBlockedError,
+    ExtractionTimeoutError,
+)
+
 
 class ExtractorRegistry:
     def __init__(self, chains: Mapping[Platform, Sequence[Extractor]]) -> None:
@@ -33,12 +42,12 @@ class ExtractorRegistry:
 
             try:
                 return await extractor.extract(url)
-            except (MediaTooLargeError, MediaTooLongError):
-                raise  # another backend would hit the same limit
-            except (PlatformBlockedError, ExtractionTimeoutError):
-                raise  # do not hammer a throttling platform or spend a second timeout
             except ExtractionError as error:
                 errors.append(error)
+                error.attempts = errors  # the log shows what every tool said
+
+                if isinstance(error, _FINAL_ERRORS):
+                    raise
 
         raise _most_relevant(errors)
 
