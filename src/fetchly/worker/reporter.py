@@ -4,6 +4,7 @@ import structlog
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import ReactionTypeEmoji, ReactionTypeUnion, ReplyParameters
+from redis.exceptions import RedisError
 
 from fetchly.db import ChatRepository, DownloadRepository
 from fetchly.extractors import (
@@ -15,6 +16,7 @@ from fetchly.extractors import (
 )
 from fetchly.queue import Job, MessageTracker
 from fetchly.telemetry import Metrics
+from fetchly.worker.alerts import LoginAlert
 from fetchly.worker.processor import RESULT_OK, Outcome
 
 log = structlog.stdlib.get_logger(__name__)
@@ -34,17 +36,20 @@ FAILURE_TEXTS = {
 class Reporter:
     def __init__(
         self,
+        *,
         bot: Bot,
         tracker: MessageTracker,
         chats: ChatRepository,
         downloads: DownloadRepository,
         metrics: Metrics,
+        login_alert: LoginAlert,
     ) -> None:
         self._bot = bot
         self._tracker = tracker
         self._chats = chats
         self._downloads = downloads
         self._metrics = metrics
+        self._login_alert = login_alert
 
     async def report(self, job: Job, outcome: Outcome) -> None:
         platform = job.platform.value
@@ -53,6 +58,7 @@ class Reporter:
         log.info("job_finished", chat_id=job.chat_id, platform=platform, result=outcome.result)
         await self._react(job, failed=outcome.result != RESULT_OK)
         await self._explain(job, outcome)
+        await self._watch_login(job, outcome)
         await self._persist(job, outcome)
 
     async def _react(self, job: Job, *, failed: bool) -> None:
@@ -81,6 +87,15 @@ class Reporter:
                     message_id=job.message_id, allow_sending_without_reply=True
                 ),
             )
+
+    async def _watch_login(self, job: Job, outcome: Outcome) -> None:
+        try:
+            if outcome.result == LoginRequiredError.result:
+                await self._login_alert.refused(job.platform)
+            elif outcome.result == RESULT_OK and not outcome.from_cache:
+                await self._login_alert.succeeded(job.platform)  # cookies work (or are not needed)
+        except RedisError:
+            log.exception("login_alert_failed", platform=job.platform.value)
 
     async def _persist(self, job: Job, outcome: Outcome) -> None:
         try:

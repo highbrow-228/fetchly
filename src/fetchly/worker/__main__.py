@@ -15,6 +15,7 @@ from fetchly.ratelimit import PlatformPauser, SendLimiter
 from fetchly.redis_client import create_redis
 from fetchly.telemetry import Metrics, setup_logging
 from fetchly.telemetry.server import add_telemetry_routes, start_site
+from fetchly.worker.alerts import LoginAlert
 from fetchly.worker.consumer import Consumer
 from fetchly.worker.maintenance import Maintenance
 from fetchly.worker.processor import JobProcessor
@@ -57,11 +58,12 @@ async def run(settings: Settings) -> None:
     )
 
     reporter = Reporter(
-        bot,
-        MessageTracker(redis, settings.job_state_ttl_seconds),
-        ChatRepository(sessions),
-        downloads,
-        metrics,
+        bot=bot,
+        tracker=MessageTracker(redis, settings.job_state_ttl_seconds),
+        chats=ChatRepository(sessions),
+        downloads=downloads,
+        metrics=metrics,
+        login_alert=LoginAlert(bot, redis, settings.owner_id),
     )
 
     consumer = Consumer(
